@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "e学助手",
+  "version": "1.0",
+  "description": "自动完成课程进度",
+  "permissions": ["activeTab", "scripting"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://elearning.tcsasac.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 200px;
+      padding: 16px;
+      font-family: 'Microsoft YaHei', sans-serif;
+      background: #f5f5f5;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    #startBtn {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    #startBtn:hover {
+      background-color: #45a049;
+    }
+
+    #stopBtn {
+      background-color: #f44336;
+      color: white;
+    }
+
+    #stopBtn:hover {
+      background-color: #da190b;
+    }
+
+    .footer {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="title">e学助手</div>
+    <button id="startBtn">开始自动播放</button>
+    <button id="stopBtn">停止播放</button>
+    <div class="footer">v1.0</div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
