@@ -1,19 +1,275 @@
-let timer = null;
 let isRunning = false;
+let panelCreated = false;
+let currentVideoIndex = -1; // 当前播放视频的索引
+let videoList = []; // 存储视频列表
+let timer = null; // 用于进度更新的定时器
 
-// 停止播放功能
-function stopPlaying() {
-    isRunning = false;
-    clearInterval(timer);
-    timer = null;
-    const video = document.querySelector('video');
-    if (video) {
-        video.pause();
+// 获取视频列表
+function getVideoList() {
+    const items = document.querySelectorAll('.nei40');
+    if (items.length > 0) {
+        videoList = Array.from(items).filter(item => {
+            const tagSpan = item.querySelector('.text14-tag');
+            return tagSpan && tagSpan.textContent.includes('视频');
+        });
+        console.log('找到视频列表，共', videoList.length, '个视频');
+        return;
+    }
+    console.log('未找到视频列表');
+    videoList = [];
+}
+
+// 播放下一个视频
+function playNextVideo() {
+    if (!isRunning) return;
+
+    console.log('当前视频索引:', currentVideoIndex);
+    console.log('视频列表长度:', videoList.length);
+
+    currentVideoIndex++;
+    if (currentVideoIndex >= videoList.length) {
+        console.log('所有视频已播放完成');
+        stopPlaying();
+        return;
+    }
+
+    const nextVideo = videoList[currentVideoIndex];
+    const titleSpan = nextVideo.querySelector('span[title]');
+    const videoTitle = titleSpan ? titleSpan.getAttribute('title') : '未知标题';
+    console.log('正在播放第', currentVideoIndex + 1, '个视频:', videoTitle);
+
+    // 等待前一个视频的定时器清理完成
+    if (timer) {
+        clearInterval(timer);
+        timer = null;
+    }
+
+    try {
+        const titleContainer = nextVideo.querySelector('.text14.flex-row-center-v');
+        if (titleContainer) {
+            titleContainer.click();
+            console.log('成功点击标题容器');
+            // 等待页面加载和视频元素出现
+            waitForVideoElement();
+        }
+    } catch (e) {
+        console.error('点击失败:', e);
     }
 }
 
-// 确保面板只创建一次
-let panelCreated = false;
+// 等待视频元素出现
+function waitForVideoElement() {
+    let retryCount = 0;
+    const maxRetries = 20; // 增加最大重试次数
+    const retryInterval = 500; // 缩短重试间隔
+
+    function checkVideoElement() {
+        const video = document.querySelector('video');
+        const highlight = document.querySelector('.Highlight');
+        const currentTitle = highlight?.querySelector('span[title]')?.getAttribute('title');
+
+        // 检查当前高亮的视频是否是我们要播放的视频
+        const targetVideo = videoList[currentVideoIndex];
+        const targetTitle = targetVideo?.querySelector('span[title]')?.getAttribute('title');
+
+        if (video && currentTitle === targetTitle) {
+            console.log('视频元素已就绪');
+            waitForVideoAndPlay();
+        } else {
+            console.log('等待视频元素...', retryCount);
+            if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(checkVideoElement, retryInterval);
+            } else {
+                console.log('视频加载超时，尝试重新点击');
+                // 如果超时，重新尝试点击
+                const titleContainer = videoList[currentVideoIndex].querySelector('.text14.flex-row-center-v');
+                if (titleContainer) {
+                    titleContainer.click();
+                    console.log('重新点击视频');
+                    retryCount = 0;
+                    setTimeout(checkVideoElement, retryInterval);
+                }
+            }
+        }
+    }
+
+    setTimeout(checkVideoElement, 1000); // 初始等待时间
+}
+
+// 等待视频加载并开始播放
+function waitForVideoAndPlay() {
+    let retryCount = 0;
+    const maxRetries = 10;
+    const retryInterval = 1000;
+
+    function tryPlayVideo() {
+        const video = document.querySelector('video');
+        if (video && !video.paused) {
+            console.log('视频已经在播放中');
+            startAutoProgress(video);
+            return;
+        }
+
+        if (video) {
+            console.log('找到视频元素，尝试播放');
+            try {
+                video.playbackRate = 2.0;
+                video.play().then(() => {
+                    console.log('视频开始播放');
+                    video.removeEventListener('ended', playNextVideo);
+                    video.addEventListener('ended', playNextVideo);
+                    startAutoProgress(video);
+                }).catch(error => {
+                    console.error('播放失败:', error);
+                    if (retryCount < maxRetries) {
+                        retryCount++;
+                        setTimeout(tryPlayVideo, retryInterval);
+                    }
+                });
+            } catch (e) {
+                console.error('播放出错:', e);
+                if (retryCount < maxRetries) {
+                    retryCount++;
+                    setTimeout(tryPlayVideo, retryInterval);
+                }
+            }
+        } else {
+            console.log('未找到视频元素，等待重试');
+            if (retryCount < maxRetries) {
+                retryCount++;
+                setTimeout(tryPlayVideo, retryInterval);
+            }
+        }
+    }
+
+    tryPlayVideo();
+}
+
+// 开始自动更新进度
+function startAutoProgress(video) {
+    if (timer) {
+        clearInterval(timer);
+        timer = null;
+    }
+
+    // 确保视频处于播放状态
+    if (video.paused) {
+        video.play().catch(e => console.log('播放状态更新失败:', e));
+    }
+    video.playbackRate = 2.0;
+
+    const duration = video.duration;
+    let currentProgress = (video.currentTime / duration) * 100;
+
+    // 获取当前设置的倍速
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = speedSlider ? parseFloat(speedSlider.value) : 2.0;
+
+    // 根据视频时长和倍速调整进度增量和更新间隔
+    const progressIncrement = speedValue * (
+        duration <= 300 ? 2.0 : // 5分钟以内的视频
+            duration <= 600 ? 1.0 : // 10分钟以内的视频
+                0.5 // 更长的视频
+    );
+
+    const updateInterval = duration <= 300 ? 200 : // 5分钟以内的视频
+        duration <= 600 ? 300 : // 10分钟以内的视频
+            500; // 更长的视频
+
+    // 更新播放器状态
+    const playButton = document.querySelector('.xgplayer-play');
+    if (playButton) {
+        const playIcon = playButton.querySelector('.play');
+        const pauseIcon = playButton.querySelector('.pause');
+        if (playIcon) playIcon.style.display = 'none';
+        if (pauseIcon) pauseIcon.style.display = 'block';
+    }
+
+    timer = setInterval(() => {
+        if (!isRunning) {
+            clearInterval(timer);
+            timer = null;
+            return;
+        }
+
+        if (currentProgress >= 100) {
+            clearInterval(timer);
+            timer = null;
+            playNextVideo();
+            return;
+        }
+
+        // 确保视频始终处于播放状态
+        if (video.paused) {
+            video.play().catch(e => console.log('播放状态更新失败:', e));
+        }
+
+        currentProgress += progressIncrement;
+        const targetTime = (currentProgress / 100) * duration;
+
+        try {
+            video.currentTime = targetTime;
+            updateProgressBar(currentProgress);
+        } catch (e) {
+            console.log('更新进度:', currentProgress);
+        }
+    }, updateInterval);
+}
+
+// 更新进度条
+function updateProgressBar(progress) {
+    const progressBar = document.querySelector('.xgplayer-progress-played');
+    if (progressBar) {
+        progressBar.style.width = `${progress}%`;
+    }
+}
+
+// 开始自动播放列表
+function startPlaylist() {
+    isRunning = true;
+    getVideoList();
+    if (videoList.length === 0) {
+        console.log('未找到视频列表');
+        return;
+    }
+
+    // 先点击播放按钮确保视频处于播放状态
+    const playButton = document.querySelector('.xgplayer-play');
+    if (playButton) {
+        playButton.click();
+        console.log('点击播放按钮');
+    }
+
+    const currentPlaying = document.querySelector('.Highlight');
+    if (currentPlaying) {
+        const currentContainer = currentPlaying.closest('.nei40');
+        if (currentContainer) {
+            currentVideoIndex = videoList.indexOf(currentContainer) - 1;
+            console.log('从当前视频继续播放:', currentVideoIndex + 2);
+        } else {
+            currentVideoIndex = -1;
+        }
+    } else {
+        currentVideoIndex = -1;
+    }
+
+    playNextVideo();
+}
+
+// 停止播放
+function stopPlaying() {
+    isRunning = false;
+    if (timer) {
+        clearInterval(timer);
+        timer = null;
+    }
+    const video = document.querySelector('video');
+    if (video) {
+        video.pause();
+        video.removeEventListener('ended', playNextVideo);
+    }
+}
 
 // 创建悬浮控制面板
 function createFloatingPanel() {
@@ -43,33 +299,21 @@ function createFloatingPanel() {
                 color: #333;
                 margin-bottom: 5px;
                 text-align: center;
-            ">e学助手</div>
-            <div id="customProgressBar" style="
-                width: 100%;
-                height: 4px;
-                background: #ddd;
-                border-radius: 2px;
-                cursor: pointer;
-                position: relative;
+            ">视频助手</div>
+            <div style="
+                display: flex;
+                flex-direction: column;
+                gap: 4px;
+                margin-bottom: 5px;
             ">
-                <div id="customProgress" style="
-                    width: 0%;
-                    height: 100%;
-                    background: #4CAF50;
-                    border-radius: 2px;
-                    position: relative;
-                ">
-                    <div id="progressHandle" style="
-                        width: 12px;
-                        height: 12px;
-                        background: #4CAF50;
-                        border-radius: 50%;
-                        position: absolute;
-                        right: -6px;
-                        top: -4px;
-                        cursor: pointer;
-                    "></div>
-                </div>
+                <label for="speedSlider" style="
+                    font-size: 12px;
+                    color: #666;
+                ">倍速设置: <span id="speedValue">2.0</span>x</label>
+                <input type="range" id="speedSlider"
+                    min="0.5" max="5" step="0.5" value="2.0"
+                    style="width: 100%;"
+                >
             </div>
             <button id="floatingStartBtn" style="
                 background: #4CAF50;
@@ -95,50 +339,19 @@ function createFloatingPanel() {
     `;
     document.body.appendChild(panel);
 
-    // 添加按钮事件
     const startBtn = document.getElementById('floatingStartBtn');
     const stopBtn = document.getElementById('floatingStopBtn');
-    const progressBar = document.getElementById('customProgressBar');
-    const progress = document.getElementById('customProgress');
-    const handle = document.getElementById('progressHandle');
+    const speedSlider = document.getElementById('speedSlider');
+    const speedValue = document.getElementById('speedValue');
 
-    // 进度条点击和拖动功能
-    let isDraggingProgress = false;
-
-    function updateVideoProgress(e) {
-        const video = document.querySelector('video');
-        if (!video) return;
-
-        const rect = progressBar.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
-
-        progress.style.width = `${percentage}%`;
-        video.currentTime = (percentage / 100) * video.duration;
-        updateProgressBar(percentage);
-    }
-
-    progressBar.addEventListener('mousedown', (e) => {
-        if (e.target === handle) {
-            isDraggingProgress = true;
-        } else {
-            updateVideoProgress(e);
-        }
-    });
-
-    document.addEventListener('mousemove', (e) => {
-        if (isDraggingProgress) {
-            updateVideoProgress(e);
-        }
-    });
-
-    document.addEventListener('mouseup', () => {
-        isDraggingProgress = false;
+    // 倍速滑块事件
+    speedSlider.addEventListener('input', () => {
+        const value = speedSlider.value;
+        speedValue.textContent = value;
     });
 
     startBtn.addEventListener('click', () => {
-        isRunning = true;
-        autoProgress();
+        startPlaylist();
         startBtn.style.background = '#45a049';
     });
 
@@ -162,12 +375,8 @@ function createFloatingPanel() {
     document.addEventListener('mouseup', dragEnd);
 
     function dragStart(e) {
-        if (e.target === progressBar || e.target === progress || e.target === handle) {
-            return;
-        }
         initialX = e.clientX - xOffset;
         initialY = e.clientY - yOffset;
-
         if (e.target === dragPanel) {
             isDragging = true;
         }
@@ -178,15 +387,13 @@ function createFloatingPanel() {
             e.preventDefault();
             currentX = e.clientX - initialX;
             currentY = e.clientY - initialY;
-
             xOffset = currentX;
             yOffset = currentY;
-
             setTranslate(currentX, currentY, dragPanel);
         }
     }
 
-    function dragEnd(e) {
+    function dragEnd() {
         initialX = currentX;
         initialY = currentY;
         isDragging = false;
@@ -197,108 +404,9 @@ function createFloatingPanel() {
     }
 }
 
-// 多种方式尝试创建面板
-function initializePanel() {
-    // 方式1: DOMContentLoaded
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', createFloatingPanel);
-    } else {
-        createFloatingPanel();
-    }
-
-    // 方式2: 监听DOM变化
-    const observer = new MutationObserver((mutations) => {
-        createFloatingPanel();
-    });
-
-    observer.observe(document.documentElement || document.body, {
-        childList: true,
-        subtree: true
-    });
-
-    // 方式3: 延迟尝试
-    setTimeout(createFloatingPanel, 1000);
+// 初始化
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', createFloatingPanel);
+} else {
+    createFloatingPanel();
 }
-
-// 立即初始化
-initializePanel();
-
-function autoProgress() {
-    if (!isRunning) return;
-
-    const video = document.querySelector('video');
-    if (!video) return;
-
-    video.playbackRate = 2.0;
-    video.play();
-
-    const duration = video.duration;
-    let currentProgress = (video.currentTime / duration) * 100;
-
-    // 根据视频时长调整进度增量
-    const progressIncrement = duration <= 300 ? 2.0 : // 5分钟以内的视频
-        duration <= 600 ? 1.0 : // 10分钟以内的视频
-            0.5; // 更长的视频
-
-    // 根据视频时长调整更新间隔
-    const updateInterval = duration <= 300 ? 200 : // 5分钟以内的视频
-        duration <= 600 ? 300 : // 10分钟以内的视频
-            500; // 更长的视频
-
-    if (timer) {
-        clearInterval(timer);
-        timer = null;
-    }
-
-    timer = setInterval(() => {
-        if (!isRunning) {
-            stopPlaying();
-            return;
-        }
-
-        if (currentProgress >= 100) {
-            stopPlaying();
-            return;
-        }
-
-        currentProgress += progressIncrement;
-        const targetTime = (currentProgress / 100) * duration;
-
-        try {
-            video.currentTime = targetTime;
-            updateProgressBar(currentProgress);
-            // 更新自定义进度条
-            const customProgress = document.getElementById('customProgress');
-            if (customProgress) {
-                customProgress.style.width = `${currentProgress}%`;
-            }
-        } catch (e) {
-            console.log('更新进度:', currentProgress);
-        }
-    }, updateInterval);
-}
-
-function updateProgressBar(progress) {
-    const progressBar = document.querySelector('.xgplayer-progress-played');
-    if (progressBar) {
-        progressBar.style.width = `${progress}%`;
-    }
-    // 更新自定义进度条
-    const customProgress = document.getElementById('customProgress');
-    if (customProgress) {
-        customProgress.style.width = `${progress}%`;
-    }
-}
-
-// 保持消息监听功能
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'start') {
-        isRunning = true;
-        autoProgress();
-        sendResponse({ status: 'started' });
-    } else if (request.action === 'stop') {
-        stopPlaying();
-        sendResponse({ status: 'stopped' });
-    }
-    return true;
-});
